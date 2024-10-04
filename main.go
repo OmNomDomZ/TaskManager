@@ -1,13 +1,19 @@
 package main
 
 import (
+	"TaskManager/db"
 	"TaskManager/handlers"
+	"fmt"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 )
 
 func main() {
+	db.InitDB()
+
+	fmt.Println("Database connected successfully")
+
 	r := mux.NewRouter()
 
 	r.HandleFunc("/tasks", handlers.GetAllTasks).Methods("GET")

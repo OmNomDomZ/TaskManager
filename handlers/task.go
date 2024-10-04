@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"TaskManager/db"
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"net/http"
@@ -9,100 +10,107 @@ import (
 )
 
 type Task struct {
-	ID          int       `json:"id"`
+	ID          int       `gorm:"primaryKey" json:"id"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
-var tasks []Task
-
-func init() {
-	tasks = []Task{
-		{ID: 1, Title: "First Task", Description: "Simple task 1", CreatedAt: time.Now()},
-		{ID: 2, Title: "Second Task", Description: "Simple task 2", CreatedAt: time.Now()},
-	}
-}
+//var tasks []Task
+//
+//func init() {
+//	tasks = []Task{
+//		{ID: 1, Title: "First Task", Description: "Simple task 1", CreatedAt: time.Now()},
+//		{ID: 2, Title: "Second Task", Description: "Simple task 2", CreatedAt: time.Now()},
+//	}
+//}
 
 func GetTask(w http.ResponseWriter, r *http.Request) {
+
 	vars := mux.Vars(r)
 	id, _ := strconv.Atoi(vars["id"])
 
-	for _, task := range tasks {
-		if task.ID == id {
-			w.Header().Set("Content-Type", "application/json")
-			e := json.NewEncoder(w).Encode(task)
-			if e != nil {
-				panic(e)
-			}
-			return
-		}
+	var task Task
+
+	if err := db.DB.First(&task, id).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w).Encode(task)
+	if e != nil {
+		panic(e)
+	}
 }
 
 func GetAllTasks(w http.ResponseWriter, r *http.Request) {
+	var tasks []Task
+	if err := db.DB.Find(&tasks).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	e := json.NewEncoder(w).Encode(tasks)
 	if e != nil {
-		panic(e)
+		http.Error(w, e.Error(), http.StatusInternalServerError)
+		return
 	}
 }
 
 func Create(w http.ResponseWriter, r *http.Request) {
-	var t Task
-	e := json.NewDecoder(r.Body).Decode(&t)
+	var task Task
+	e := json.NewDecoder(r.Body).Decode(&task)
 	if e != nil {
-		panic(e)
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
 	}
-	t.ID = len(tasks) + 1
-	t.CreatedAt = time.Now()
-	tasks = append(tasks, t)
+	task.CreatedAt = time.Now()
+
+	if err := db.DB.Create(&task).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-
-	e = json.NewEncoder(w).Encode(tasks)
+	e = json.NewEncoder(w).Encode(task)
 	if e != nil {
 		panic(e)
 	}
 }
 
 func Delete(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id, _ := strconv.Atoi(vars["id"])
 
-	for i, task := range tasks {
-		if task.ID == id {
-			tasks = append(tasks[:i], tasks[i+1:]...)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	if err := db.DB.Delete(&Task{}, id); err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
 	}
 
-	http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func Update(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id, _ := strconv.Atoi(vars["id"])
 
-	var t Task
-	e := json.NewDecoder(r.Body).Decode(&t)
-	if e != nil {
-		panic(e)
+	var task Task
+	if err := db.DB.First(&task, id).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	for _, task := range tasks {
-		if task.ID == id {
-			task.Title = t.Title
-			task.Description = t.Description
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	if e := json.NewDecoder(r.Body).Decode(&task); e != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
 	}
 
-	http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+	if err := db.DB.Save(&task).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
